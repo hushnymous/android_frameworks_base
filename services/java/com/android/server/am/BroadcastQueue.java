@@ -41,6 +41,10 @@ import android.util.EventLog;
 import android.util.Log;
 import android.util.Slog;
 
+// MUTT
+import android.content.IntentFilter;
+import com.android.internal.telephony.TelephonyIntents;
+
 /**
  * BROADCASTS
  *
@@ -129,6 +133,9 @@ public class BroadcastQueue {
      */
     int mPendingBroadcastRecvIndex;
 
+	// MUTT
+	IntentFilter mMuttFilter;
+
     static final int BROADCAST_INTENT_MSG = ActivityManagerService.FIRST_BROADCAST_QUEUE_MSG;
     static final int BROADCAST_TIMEOUT_MSG = ActivityManagerService.FIRST_BROADCAST_QUEUE_MSG + 1;
 
@@ -172,7 +179,19 @@ public class BroadcastQueue {
         mService = service;
         mQueueName = name;
         mTimeoutPeriod = timeoutPeriod;
-    }
+
+		// MUTT
+		mMuttFilter = new IntentFilter();
+		// boot
+		mMuttFilter.addAction(Intent.ACTION_BOOT_COMPLETED);
+		mMuttFilter.addAction(Intent.ACTION_PRE_BOOT_COMPLETED);
+		// screen
+		mMuttFilter.addAction(Intent.ACTION_SCREEN_ON);
+		mMuttFilter.addAction(Intent.ACTION_SCREEN_OFF);
+		// other
+		mMuttFilter.addAction(Intent.ACTION_PROVIDER_CHANGED);
+		mMuttFilter.addAction(TelephonyIntents.ACTION_SIM_STATE_CHANGED);
+	}
 
     public boolean isPendingBroadcastProcessLocked(int pid) {
         return mPendingBroadcast != null && mPendingBroadcast.curApp.pid == pid;
@@ -741,6 +760,24 @@ public class BroadcastQueue {
                     skip = true;
                 }
             }
+			// MUTT
+			if(mMuttFilter.hasAction(r.intent.getAction())) {
+				Slog.v(TAG, "MUTT: whitelist broadcast "
+						+ r.intent.toString());
+			} else {
+				if (mService.mBatteryStatsService.allowMutt( info.activityInfo.applicationInfo.uid,
+							info.activityInfo.packageName) != 0) {
+					Slog.w(TAG, "MUTT: skipping broadcasting "
+							+ r.intent.toString()
+							+ " from " + r.callerPackage + " (pid="
+							+ r.callingPid + ", uid=" + r.callingUid 
+                            + " to " + component.flattenToShortString()
+							+ ")");
+
+					skip = true;
+				}
+			}
+
             boolean isSingleton = false;
             try {
                 isSingleton = mService.isSingleton(info.activityInfo.processName,

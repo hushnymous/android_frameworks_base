@@ -246,6 +246,9 @@ public class ActiveServices {
                 service, neededGrants));
         r.lastActivity = SystemClock.uptimeMillis();
         synchronized (r.stats.getBatteryStats()) {
+			// MUTT
+			Slog.v(TAG, "MUTT startRunningLocked " + r.packageName); 
+
             r.stats.startRunningLocked();
         }
         String error = bringUpServiceLocked(r, service.getFlags(), false);

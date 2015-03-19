@@ -58,7 +58,12 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.TimeZone;
 
+import com.android.internal.app.IBatteryStats;
+
+// MUTT
 import com.android.internal.util.LocalLog;
+import com.android.server.am.BatteryStatsService;
+import android.os.RemoteException;
 
 class AlarmManagerService extends IAlarmManager.Stub {
     // The threshold for how long an alarm can be late before we print a
@@ -76,7 +81,7 @@ class AlarmManagerService extends IAlarmManager.Stub {
 
     private static final String TAG = "AlarmManager";
     private static final String ClockReceiver_TAG = "ClockReceiver";
-    private static final boolean localLOGV = false;
+    private static final boolean localLOGV = true;	// MUTT
     private static final int ALARM_EVENT = 1;
     private static final String TIMEZONE_PROPERTY = "persist.sys.timezone";
     
@@ -108,6 +113,9 @@ class AlarmManagerService extends IAlarmManager.Stub {
     private final PendingIntent mDateChangeSender;
 
     private final AppOpsManager mAppOps;
+
+	// MUTT
+	IBatteryStats mBatteryStats;
 
     private static final class InFlight extends Intent {
         final PendingIntent mPendingIntent;
@@ -202,6 +210,9 @@ class AlarmManagerService extends IAlarmManager.Stub {
         }
 
         mAppOps = (AppOpsManager)mContext.getSystemService(Context.APP_OPS_SERVICE);
+
+		// MUTT
+		mBatteryStats = BatteryStatsService.getService();
     }
     
     protected void finalize() throws Throwable {
@@ -485,7 +496,23 @@ class AlarmManagerService extends IAlarmManager.Stub {
     
     private int addAlarmLocked(Alarm alarm) {
         ArrayList<Alarm> alarmList = getAlarmList(alarm.type);
-        
+
+		// MUTT
+        alarm.muttWhen = alarm.when;
+		int uid = alarm.operation.getCreatorUid();
+		String pkg = alarm.operation.getCreatorPackage();
+		long nextMutt  = 0;
+		try {
+			nextMutt = mBatteryStats.nextMutt(uid, pkg);
+		} catch (Exception e) {
+			// First time it can also throw null pointer exception
+			Slog.v(TAG, "MUTT " + e);
+		}
+		if( alarm.muttWhen < nextMutt ) {
+			alarm.muttWhen = nextMutt;
+			Slog.v(TAG, "MUTT delay " + pkg + " " + alarm.when + " to " + alarm.muttWhen);
+		}
+
         int index = Collections.binarySearch(alarmList, alarm, mIncreasingTimeOrder);
         if (index < 0) {
             index = 0 - index - 1;
@@ -498,10 +525,15 @@ class AlarmManagerService extends IAlarmManager.Stub {
             Slog.v(TAG, "alarms: " + alarmList.size() + " type: " + alarm.type);
             int position = 0;
             for (Alarm a : alarmList) {
-                Time time = new Time();
-                time.set(a.when);
-                String timeStr = time.format("%b %d %I:%M:%S %p");
-                Slog.v(TAG, position + ": " + timeStr
+				// MUTT
+                Time whenTime = new Time();
+                whenTime.set(a.when);
+                String whenTimeStr = whenTime.format("%b %d %I:%M:%S %p");
+
+				Time muttWhenTime = new Time();
+                muttWhenTime.set(a.muttWhen);
+                String muttWhenTimeStr = muttWhenTime.format("%b %d %I:%M:%S %p");
+                Slog.v(TAG, position + ":w " + whenTimeStr + " :mw " + muttWhenTimeStr
                         + " " + a.operation.getTargetPackage());
                 position += 1;
             }
@@ -518,8 +550,9 @@ class AlarmManagerService extends IAlarmManager.Stub {
                 ArrayList<Alarm> alarmList = getAlarmList(i);
                 if (alarmList.size() > 0) {
                     Alarm a = alarmList.get(0);
-                    if (a.when < nextAlarm) {
-                        nextAlarm = a.when;
+					// MUTT
+                    if (a.muttWhen < nextAlarm) {
+                        nextAlarm = a.muttWhen;
                     }
                 }
             }
@@ -534,14 +567,16 @@ class AlarmManagerService extends IAlarmManager.Stub {
             // The kernel never triggers alarms with negative wakeup times
             // so we ensure they are positive.
             long alarmSeconds, alarmNanoseconds;
-            if (alarm.when < 0) {
+			// MUTT - change when to muttWhen
+            if (alarm.muttWhen < 0) {
                 alarmSeconds = 0;
                 alarmNanoseconds = 0;
             } else {
-                alarmSeconds = alarm.when / 1000;
-                alarmNanoseconds = (alarm.when % 1000) * 1000 * 1000;
+				// MUTT - change when to muttWhen
+                alarmSeconds = alarm.muttWhen / 1000;
+                alarmNanoseconds = (alarm.muttWhen % 1000) * 1000 * 1000;
             }
-            
+
             set(mDescriptor, alarm.type, alarmSeconds, alarmNanoseconds);
         }
         else
@@ -550,7 +585,8 @@ class AlarmManagerService extends IAlarmManager.Stub {
             msg.what = ALARM_EVENT;
             
             mHandler.removeMessages(ALARM_EVENT);
-            mHandler.sendMessageAtTime(msg, alarm.when);
+			// MUTT - change when to muttWhen
+            mHandler.sendMessageAtTime(msg, alarm.muttWhen);
         }
     }
     
@@ -721,9 +757,12 @@ class AlarmManagerService extends IAlarmManager.Stub {
         {
             Alarm alarm = it.next();
 
-            if (localLOGV) Slog.v(TAG, "Checking active alarm when=" + alarm.when + " " + alarm);
+			// MUTT
+            if (localLOGV) Slog.v(TAG, "Checking active alarm when=" +
+				alarm.when + "muttWhen " + alarm.muttWhen + " " + alarm);
 
-            if (alarm.when > now) {
+			// MUTT
+            if (alarm.muttWhen > now) {
                 // don't fire alarms in the future
                 break;
             }
@@ -776,8 +815,9 @@ class AlarmManagerService extends IAlarmManager.Stub {
      */
     public static class IncreasingTimeOrder implements Comparator<Alarm> {
         public int compare(Alarm a1, Alarm a2) {
-            long when1 = a1.when;
-            long when2 = a2.when;
+			// MUTT
+            long when1 = a1.muttWhen;
+            long when2 = a2.muttWhen;
             if (when1 - when2 > 0) {
                 return 1;
             }
@@ -791,12 +831,19 @@ class AlarmManagerService extends IAlarmManager.Stub {
     private static class Alarm {
         public int type;
         public int count;
+		// MUTT-- we add muttWhen
+		// when == muttWhen when nextMutt < when
+		// otherwise muttWhen = nextMutt
         public long when;
+		public long muttWhen;
+
         public long repeatInterval;
         public PendingIntent operation;
         
         public Alarm() {
             when = 0;
+			// MUTT
+			muttWhen = 0;
             repeatInterval = 0;
             operation = null;
         }
@@ -818,6 +865,8 @@ class AlarmManagerService extends IAlarmManager.Stub {
         public void dump(PrintWriter pw, String prefix, long now) {
             pw.print(prefix); pw.print("type="); pw.print(type);
                     pw.print(" when="); TimeUtils.formatDuration(when, now, pw);
+					// MUTT
+                    pw.print(" muttWhen="); TimeUtils.formatDuration(muttWhen, now, pw);
                     pw.print(" repeatInterval="); pw.print(repeatInterval);
                     pw.print(" count="); pw.println(count);
             pw.print(prefix); pw.print("operation="); pw.println(operation);
@@ -873,10 +922,25 @@ class AlarmManagerService extends IAlarmManager.Stub {
                         Alarm alarm = it.next();
                         try {
                             if (localLOGV) Slog.v(TAG, "sending alarm " + alarm);
-                            alarm.operation.send(mContext, 0,
-                                    mBackgroundIntent.putExtra(
+							// MUTT
+							//try {
+
+								//int uid = alarm.operation.getCreatorUid();
+								//String pkg = alarm.operation.getCreatorPackage();
+								//if( mBatteryStats.allowMutt(uid, pkg) ) {
+									alarm.operation.send(mContext, 0,
+											mBackgroundIntent.putExtra(
                                             Intent.EXTRA_ALARM_COUNT, alarm.count),
-                                    mResultReceiver, mHandler);
+											mResultReceiver, mHandler);
+								//}
+							//} catch(RemoteException e) {
+								// This shouldn't happen
+								//Slog.w(TAG, "MUTT RemoteException");
+								//alarm.operation.send(mContext, 0,
+										//mBackgroundIntent.putExtra(
+										//Intent.EXTRA_ALARM_COUNT, alarm.count),
+										//mResultReceiver, mHandler);
+							//}
                             
                             // we have an active broadcast so stay awake.
                             if (mBroadcastRefCount == 0) {
@@ -970,7 +1034,19 @@ class AlarmManagerService extends IAlarmManager.Stub {
                 {
                     Alarm alarm = it.next();
                     try {
-                        alarm.operation.send();
+						// MUTT
+						//int uid = alarm.operation.getCreatorUid();
+						//String pkg =
+						//alarm.operation.getCreatorPackage();
+						//try {
+							//if( mBatteryStats.allowMutt(uid, pkg) ) {
+								alarm.operation.send();
+							//}
+						//} catch(RemoteException e) {
+							// This shouldn't happen
+							//Slog.w(TAG, "MUTT RemoteException");
+							//alarm.operation.send();
+						//}
                     } catch (PendingIntent.CanceledException e) {
                         if (alarm.repeatInterval > 0) {
                             // This IntentSender is no longer valid, but this

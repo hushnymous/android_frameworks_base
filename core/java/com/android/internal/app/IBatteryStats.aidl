@@ -74,4 +74,9 @@ interface IBatteryStats {
     void setBatteryState(int status, int health, int plugType, int level, int temp, int volt);
     long getAwakeTimeBattery();
     long getAwakeTimePlugged();
+
+	// MUTT
+	long allowMutt(int uid, String pkg);
+	long allowMutt_();
+	long nextMutt(int uid, String pkg);
 }

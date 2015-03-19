@@ -255,6 +255,35 @@ public final class BatteryStatsService extends IBatteryStats.Stub {
         }
     }
 
+	// MUTT
+	public void noteFg(int ui, String pkg) {
+        enforceCallingPermission();
+        synchronized (mStats) {
+            mStats.noteFgLocked(ui, pkg);
+        }
+    }
+	public long allowMutt_( ) {
+		int uid = Binder.getCallingUid();
+		String pkg = mContext.getPackageManager().getNameForUid(uid);
+		return allowMutt(uid, pkg);
+	}
+	public long allowMutt(int uid, String pkg) {
+        Slog.v("BatteryStats", "MUTT called allowMutt");
+		// This can be called by app packages
+		//enforceCallingPermission();
+        synchronized (mStats) {
+            return mStats.allowMutt(uid, pkg);
+        }
+	}
+	public long nextMutt(int uid, String pkg) {
+        Slog.v("BatteryStats", "MUTT called nextMutt");
+		// This can be called by app packages
+		//enforceCallingPermission();
+        synchronized (mStats) {
+            return mStats.nextMutt(uid, pkg);
+        }
+	}
+
     public void noteStartAudio(int uid) {
         enforceCallingPermission();
         synchronized (mStats) {

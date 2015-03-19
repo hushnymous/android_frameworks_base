@@ -222,90 +222,53 @@ class TelephonyRegistry extends ITelephonyRegistry.Stub {
                 }
                 int send = events & (events ^ r.events);
                 r.events = events;
-                if (notifyNow) {
-                    if ((events & PhoneStateListener.LISTEN_SERVICE_STATE) != 0) {
-                        try {
-                            r.callback.onServiceStateChanged(new ServiceState(mServiceState));
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                    if ((events & PhoneStateListener.LISTEN_SIGNAL_STRENGTH) != 0) {
-                        try {
-                            int gsmSignalStrength = mSignalStrength.getGsmSignalStrength();
-                            r.callback.onSignalStrengthChanged((gsmSignalStrength == 99 ? -1
-                                    : gsmSignalStrength));
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                    if ((events & PhoneStateListener.LISTEN_MESSAGE_WAITING_INDICATOR) != 0) {
-                        try {
-                            r.callback.onMessageWaitingIndicatorChanged(mMessageWaiting);
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                    if ((events & PhoneStateListener.LISTEN_CALL_FORWARDING_INDICATOR) != 0) {
-                        try {
-                            r.callback.onCallForwardingIndicatorChanged(mCallForwarding);
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                    if (validateEventsAndUserLocked(r, PhoneStateListener.LISTEN_CELL_LOCATION)) {
-                        try {
-                            if (DBG_LOC) Slog.d(TAG, "listen: mCellLocation=" + mCellLocation);
-                            r.callback.onCellLocationChanged(new Bundle(mCellLocation));
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                    if ((events & PhoneStateListener.LISTEN_CALL_STATE) != 0) {
-                        try {
-                            r.callback.onCallStateChanged(mCallState, mCallIncomingNumber);
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                    if ((events & PhoneStateListener.LISTEN_DATA_CONNECTION_STATE) != 0) {
-                        try {
-                            r.callback.onDataConnectionStateChanged(mDataConnectionState,
-                                mDataConnectionNetworkType);
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                    if ((events & PhoneStateListener.LISTEN_DATA_ACTIVITY) != 0) {
-                        try {
-                            r.callback.onDataActivity(mDataActivity);
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                    if ((events & PhoneStateListener.LISTEN_SIGNAL_STRENGTHS) != 0) {
-                        try {
-                            r.callback.onSignalStrengthsChanged(mSignalStrength);
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                    if ((events & PhoneStateListener.LISTEN_OTASP_CHANGED) != 0) {
-                        try {
-                            r.callback.onOtaspChanged(mOtaspMode);
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                    if (validateEventsAndUserLocked(r, PhoneStateListener.LISTEN_CELL_INFO)) {
-                        try {
-                            if (DBG_LOC) Slog.d(TAG, "listen: mCellInfo=" + mCellInfo);
-                            r.callback.onCellInfoChanged(mCellInfo);
-                        } catch (RemoteException ex) {
-                            remove(r.binder);
-                        }
-                    }
-                }
+				if (notifyNow ) {
+					// MUTT
+					try {
+						if(mBatteryStats.allowMutt(r.callerUid, r.pkgForDebug) == 0) {
+							if ((events & PhoneStateListener.LISTEN_SERVICE_STATE) != 0) {
+								r.callback.onServiceStateChanged(new ServiceState(mServiceState));
+							}
+							if ((events & PhoneStateListener.LISTEN_SIGNAL_STRENGTH) != 0) {
+								int gsmSignalStrength = mSignalStrength.getGsmSignalStrength();
+								r.callback.onSignalStrengthChanged((gsmSignalStrength == 99 ? -1
+											: gsmSignalStrength));
+							}
+							if ((events & PhoneStateListener.LISTEN_MESSAGE_WAITING_INDICATOR) != 0) {
+								r.callback.onMessageWaitingIndicatorChanged(mMessageWaiting);
+							}
+							if ((events & PhoneStateListener.LISTEN_CALL_FORWARDING_INDICATOR) != 0) {
+								r.callback.onCallForwardingIndicatorChanged(mCallForwarding);
+							}
+							if (validateEventsAndUserLocked(r, PhoneStateListener.LISTEN_CELL_LOCATION)) {
+								if (DBG_LOC) Slog.d(TAG, "listen: mCellLocation=" + mCellLocation);
+								r.callback.onCellLocationChanged(new Bundle(mCellLocation));
+							}
+							if ((events & PhoneStateListener.LISTEN_CALL_STATE) != 0) {
+								r.callback.onCallStateChanged(mCallState, mCallIncomingNumber);
+							}
+							if ((events & PhoneStateListener.LISTEN_DATA_CONNECTION_STATE) != 0) {
+								r.callback.onDataConnectionStateChanged(mDataConnectionState,
+										mDataConnectionNetworkType);
+							}
+							if ((events & PhoneStateListener.LISTEN_DATA_ACTIVITY) != 0) {
+								r.callback.onDataActivity(mDataActivity);
+							}
+							if ((events & PhoneStateListener.LISTEN_SIGNAL_STRENGTHS) != 0) {
+								r.callback.onSignalStrengthsChanged(mSignalStrength);
+							}
+							if ((events & PhoneStateListener.LISTEN_OTASP_CHANGED) != 0) {
+								r.callback.onOtaspChanged(mOtaspMode);
+							}
+							if (validateEventsAndUserLocked(r, PhoneStateListener.LISTEN_CELL_INFO)) {
+								if (DBG_LOC) Slog.d(TAG, "listen: mCellInfo=" + mCellInfo);
+								r.callback.onCellInfoChanged(mCellInfo);
+							}
+						}
+					} catch(RemoteException e) {
+						remove(r.binder);
+					}
+				}
             }
         } else {
             remove(callback.asBinder());

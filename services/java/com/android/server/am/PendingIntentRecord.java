@@ -31,6 +31,11 @@ import android.util.Slog;
 import java.io.PrintWriter;
 import java.lang.ref.WeakReference;
 
+// MUTT
+import com.android.internal.app.IBatteryStats;
+import com.android.server.am.BatteryStatsService;
+import android.os.RemoteException;
+
 class PendingIntentRecord extends IIntentSender.Stub {
     final ActivityManagerService owner;
     final Key key;
@@ -40,6 +45,9 @@ class PendingIntentRecord extends IIntentSender.Stub {
     boolean canceled = false;
 
     String stringName;
+
+	// MUTT
+	static IBatteryStats mBatteryStats;
     
     final static class Key {
         final int type;
@@ -185,6 +193,11 @@ class PendingIntentRecord extends IIntentSender.Stub {
         key = _k;
         uid = _u;
         ref = new WeakReference<PendingIntentRecord>(this);
+
+		// MUTT
+		if(mBatteryStats == null) {
+			mBatteryStats = BatteryStatsService.getService();
+		}
     }
 
     public int send(int code, Intent intent, String resolvedType,
@@ -225,67 +238,82 @@ class PendingIntentRecord extends IIntentSender.Stub {
                 if (userId == UserHandle.USER_CURRENT) {
                     userId = owner.getCurrentUserIdLocked();
                 }
-                switch (key.type) {
-                    case ActivityManager.INTENT_SENDER_ACTIVITY:
-                        if (options == null) {
-                            options = key.options;
-                        } else if (key.options != null) {
-                            Bundle opts = new Bundle(key.options);
-                            opts.putAll(options);
-                            options = opts;
-                        }
-                        try {
-                            if (key.allIntents != null && key.allIntents.length > 1) {
-                                Intent[] allIntents = new Intent[key.allIntents.length];
-                                String[] allResolvedTypes = new String[key.allIntents.length];
-                                System.arraycopy(key.allIntents, 0, allIntents, 0,
-                                        key.allIntents.length);
-                                if (key.allResolvedTypes != null) {
-                                    System.arraycopy(key.allResolvedTypes, 0, allResolvedTypes, 0,
-                                            key.allResolvedTypes.length);
-                                }
-                                allIntents[allIntents.length-1] = finalIntent;
-                                allResolvedTypes[allResolvedTypes.length-1] = resolvedType;
-                                owner.startActivitiesInPackage(uid, key.packageName, allIntents,
-                                        allResolvedTypes, resultTo, options, userId);
-                            } else {
-                                owner.startActivityInPackage(uid, key.packageName, finalIntent,
-                                        resolvedType, resultTo, resultWho, requestCode, 0,
-                                        options, userId);
-                            }
-                        } catch (RuntimeException e) {
-                            Slog.w(ActivityManagerService.TAG,
-                                    "Unable to send startActivity intent", e);
-                        }
-                        break;
-                    case ActivityManager.INTENT_SENDER_ACTIVITY_RESULT:
-                        key.activity.stack.sendActivityResultLocked(-1, key.activity,
-                                key.who, key.requestCode, code, finalIntent);
-                        break;
-                    case ActivityManager.INTENT_SENDER_BROADCAST:
-                        try {
-                            // If a completion callback has been requested, require
-                            // that the broadcast be delivered synchronously
-                            owner.broadcastIntentInPackage(key.packageName, uid,
-                                    finalIntent, resolvedType,
-                                    finishedReceiver, code, null, null,
-                                requiredPermission, (finishedReceiver != null), false, userId);
-                            sendFinish = false;
-                        } catch (RuntimeException e) {
-                            Slog.w(ActivityManagerService.TAG,
-                                    "Unable to send startActivity intent", e);
-                        }
-                        break;
-                    case ActivityManager.INTENT_SENDER_SERVICE:
-                        try {
-                            owner.startServiceInPackage(uid,
-                                    finalIntent, resolvedType, userId);
-                        } catch (RuntimeException e) {
-                            Slog.w(ActivityManagerService.TAG,
-                                    "Unable to send startService intent", e);
-                        }
-                        break;
-                }
+
+				// MUTT
+				long mutt = 0;
+				try {
+					mutt = mBatteryStats.allowMutt(userId, key.packageName);
+				} catch (RemoteException e) {
+					Slog.w(ActivityManagerService.TAG, "MUTT RemoteException");
+					mutt = 0;
+				}
+				if( mutt == 0) {
+					switch (key.type) {
+						case ActivityManager.INTENT_SENDER_ACTIVITY:
+							if (options == null) {
+								options = key.options;
+							} else if (key.options != null) {
+								Bundle opts = new Bundle(key.options);
+								opts.putAll(options);
+								options = opts;
+							}
+							try {
+								if (key.allIntents != null && key.allIntents.length > 1) {
+									Intent[] allIntents = new Intent[key.allIntents.length];
+									String[] allResolvedTypes = new String[key.allIntents.length];
+									System.arraycopy(key.allIntents, 0, allIntents, 0,
+											key.allIntents.length);
+									if (key.allResolvedTypes != null) {
+										System.arraycopy(key.allResolvedTypes, 0, allResolvedTypes, 0,
+												key.allResolvedTypes.length);
+									}
+									allIntents[allIntents.length-1] = finalIntent;
+									allResolvedTypes[allResolvedTypes.length-1] = resolvedType;
+									owner.startActivitiesInPackage(uid, key.packageName, allIntents,
+											allResolvedTypes, resultTo, options, userId);
+								} else {
+									owner.startActivityInPackage(uid, key.packageName, finalIntent,
+											resolvedType, resultTo, resultWho, requestCode, 0,
+											options, userId);
+								}
+							} catch (RuntimeException e) {
+								Slog.w(ActivityManagerService.TAG,
+										"Unable to send startActivity intent", e);
+							}
+							break;
+						case ActivityManager.INTENT_SENDER_ACTIVITY_RESULT:
+							key.activity.stack.sendActivityResultLocked(-1, key.activity,
+									key.who, key.requestCode, code, finalIntent);
+							break;
+						case ActivityManager.INTENT_SENDER_BROADCAST:
+							try {
+								// If a completion callback has been requested, require
+								// that the broadcast be delivered synchronously
+								owner.broadcastIntentInPackage(key.packageName, uid,
+										finalIntent, resolvedType,
+										finishedReceiver, code, null, null,
+										requiredPermission, (finishedReceiver != null), false, userId);
+								sendFinish = false;
+							} catch (RuntimeException e) {
+								Slog.w(ActivityManagerService.TAG,
+										"Unable to send startActivity intent", e);
+							}
+							break;
+						case ActivityManager.INTENT_SENDER_SERVICE:
+							try {
+								owner.startServiceInPackage(uid,
+										finalIntent, resolvedType, userId);
+							} catch (RuntimeException e) {
+								Slog.w(ActivityManagerService.TAG,
+										"Unable to send startService intent", e);
+							}
+							break;
+					}
+				} else {
+					Slog.w(ActivityManagerService.TAG, "MUTT disallowed");
+					Binder.restoreCallingIdentity(origId);
+					return ActivityManager.START_CANCELED;
+				}
                 
                 if (sendFinish) {
                     try {
